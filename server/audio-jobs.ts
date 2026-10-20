@@ -226,15 +226,37 @@ export function initAudioJobs(db: PrismaClient) {
     if (job.kind === "transcribe")
       return transcribe(project, source, input.model || "tiny.en", job.id);
     if (job.kind === "detect") {
-      await progress(job.id, 2, "FFmpeg đang tìm khoảng lặng…");
-      const revision = project.revision;
-      const silences = await detectSilence(
-        source,
-        project.duration,
-        input.noise ?? -35,
-        input.minSilence ?? 0.7,
-        report(85, 3, "Đang tìm khoảng lặng và mốc phân đoạn…"),
+      const noise = input.noise ?? -35,
+        captureFloor = input.minSilence ?? 0.25;
+      const stored = JSON.parse(project.silences || "[]");
+      const last = await db.audioJob.findFirst({
+        where: { projectId: project.id, kind: "detect", status: "completed" },
+        orderBy: { createdAt: "desc" },
+      });
+      const lastInput = last ? JSON.parse(last.input || "{}") : null;
+      const reusable =
+        input.reuseSilences !== false &&
+        stored.length > 0 &&
+        lastInput &&
+        (lastInput.noise ?? -35) === noise &&
+        (lastInput.minSilence ?? 0.25) === captureFloor;
+      await progress(
+        job.id,
+        2,
+        reusable
+          ? "Tái sử dụng khoảng lặng đã phát hiện; đang phân loại và đề xuất lại…"
+          : "FFmpeg đang tìm khoảng lặng…",
       );
+      const revision = project.revision;
+      const silences = reusable
+        ? stored
+        : await detectSilence(
+            source,
+            project.duration,
+            noise,
+            captureFloor,
+            report(85, 3, "Đang tìm khoảng lặng và mốc phân đoạn…"),
+          );
       const texts = new Map<number, string>();
       if (project.testId) {
         const qs = await db.question.findMany({
@@ -257,6 +279,12 @@ export function initAudioJobs(db: PrismaClient) {
         project.duration,
         JSON.parse(project.transcript),
         texts,
+        {
+          questionGap: input.questionGap ?? 0.8,
+          boundaryGap: input.boundaryGap ?? 4,
+          autoBoundary: input.autoBoundary ?? true,
+          window: input.window ?? null,
+        },
       );
       await db.$transaction(async (tx) => {
         const current = await tx.audioProject.findUniqueOrThrow({

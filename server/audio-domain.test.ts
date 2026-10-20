@@ -7,6 +7,8 @@ import {
   proposeSegments,
   transcriptAnchors,
   spokenNumber,
+  classifyGaps,
+  type Silence,
 } from "./audio-domain";
 test("54 TOEIC groups cover 100 questions with 6/25/13/10 group structure", () => {
   assert.deepEqual(
@@ -112,4 +114,155 @@ test("transcript anchors use word timestamp when available", () => {
     ])[0].time,
     3,
   );
+});
+test("gap classification separates mid-speech pauses, question gaps and test-transition gaps", () => {
+  const silences: Silence[] = [
+    ...Array.from({ length: 20 }, (_, i) => ({
+      start: i * 10 + 6,
+      end: i * 10 + 6.5,
+    })),
+    ...Array.from({ length: 20 }, (_, i) => ({
+      start: i * 10 + 8,
+      end: i * 10 + 9,
+    })),
+    { start: 210, end: 230 },
+    ...Array.from({ length: 10 }, (_, i) => ({
+      start: 240 + i * 10 + 8,
+      end: 240 + i * 10 + 9,
+    })),
+  ];
+  const gaps = classifyGaps(silences);
+  assert.equal(gaps.filter((g) => g.kind === "micro").length, 20);
+  assert.equal(gaps.filter((g) => g.kind === "question").length, 30);
+  assert.equal(gaps.filter((g) => g.kind === "boundary").length, 1);
+  assert.equal(gaps.find((g) => g.kind === "boundary")!.start, 210);
+  assert.equal(
+    classifyGaps(silences, { autoBoundary: false, boundaryGap: 25 }).filter(
+      (g) => g.kind === "boundary",
+    ).length,
+    0,
+  );
+});
+test("part-transition pauses are not question gaps: one file maps a full 100-question test", () => {
+  // 4 đoạn theo Part: 6/25/39/30 câu, mỗi câu 3s, giữa câu nghỉ 1s,
+  // chuyển Part nghỉ 8s. Ứng viên phải ghép đúng 54 nhóm trùm đủ 100 câu.
+  const silences: Silence[] = [];
+  const parts = [6, 25, 39, 30];
+  let t = 0;
+  for (const [pi, count] of parts.entries()) {
+    for (let i = 0; i < count; i++) {
+      t += 3;
+      const last = i === count - 1;
+      if (!last || pi < parts.length - 1) {
+        const gap = last ? 8 : 1;
+        silences.push({ start: t, end: t + gap });
+        t += gap;
+      }
+    }
+  }
+  const r = proposeSegments(silences, t, []);
+  assert.equal(r.candidates.length, 100);
+  assert.equal(r.gapStats.boundary, 3);
+  assert.equal(r.segments.filter((s) => s.start !== null).length, 54);
+  const s31 = r.segments[30], // câu 31 — cuối Part 2
+    s32 = r.segments[31], // nhóm câu 32–34 — đầu Part 3
+    last = r.segments[53];
+  assert.ok(s31.end !== null && s32.start !== null);
+  assert.ok(s31.end! < s32.start!); // ranh giới Part không bị gộp
+  assert.ok(Math.abs(last.end! - t) < 0.5); // trùm hết 100 câu trong file
+  assert.ok(r.segments.every((s) => !s.confirmed && s.confidence <= 0.15));
+});
+test("group-level audio with long part pauses keeps one group per candidate", () => {
+  const silences: Silence[] = [];
+  const parts = [6, 25, 13, 10];
+  let t = 0;
+  for (const [pi, count] of parts.entries()) {
+    for (let i = 0; i < count; i++) {
+      t += 3;
+      const last = i === count - 1;
+      if (!last || pi < parts.length - 1) {
+        silences.push({ start: t, end: t + (last ? 8 : 1) });
+        t += last ? 8 : 1;
+      }
+    }
+  }
+  const r = proposeSegments(silences, t, []);
+  assert.equal(r.candidates.length, 54);
+  assert.equal(r.gapStats.boundary, 3);
+  assert.equal(r.segments.filter((s) => s.start !== null).length, 54);
+  assert.ok(
+    r.segments.every(
+      (s) => s.evidence === "silence-only" && !s.confirmed && s.confidence <= 0.15,
+    ),
+  );
+});
+test("question-level audio (100 candidates) groups Parts 3-4 three per TOEIC group", () => {
+  const silences = Array.from({ length: 99 }, (_, i) => ({
+    start: (i + 1) * 6 - 0.5,
+    end: (i + 1) * 6 + 0.5,
+  }));
+  const r = proposeSegments(silences, 600, []);
+  assert.equal(r.candidates.length, 100);
+  assert.equal(r.segments.filter((s) => s.start !== null).length, 54);
+  const s32 = r.segments[31]; // slot 32 = câu 32–34
+  assert.ok(Math.abs(s32.start! - 186) < 0.6);
+  assert.ok(Math.abs(s32.end! - 204) < 0.6);
+  const s1 = r.segments[0], // slot 1 = câu 1
+    s31 = r.segments[30]; // slot 31 = câu 31
+  assert.ok(Math.abs(s1.start! - 0) < 0.6 && Math.abs(s1.end! - 6) < 0.6);
+  assert.ok(Math.abs(s31.start! - 180) < 0.6 && Math.abs(s31.end! - 186) < 0.6);
+  assert.ok(r.segments.every((s) => !s.confirmed && s.confidence <= 0.15));
+});
+test("extra short splits merge across the smallest gaps, never confirmed", () => {
+  const silences: Silence[] = [];
+  let t = 0;
+  for (let i = 0; i < 56; i++) {
+    t += 3;
+    if (i < 55) {
+      const gap = i === 10 || i === 30 ? 0.9 : 1.5;
+      silences.push({ start: t, end: t + gap });
+      t += gap;
+    }
+  }
+  const r = proposeSegments(silences, t, []);
+  assert.equal(r.candidates.length, 56);
+  assert.equal(r.segments.filter((s) => s.start !== null).length, 54);
+  assert.ok(r.segments.some((s) => s.evidence === "silence-merged"));
+  assert.ok(r.segments.every((s) => !s.confirmed && s.confidence <= 0.15));
+});
+test("question gap below threshold is split back at the inner pause when too few candidates", () => {
+  const silences: Silence[] = [];
+  let t = 0;
+  for (let i = 0; i < 54; i++) {
+    t += 3;
+    if (i < 53) {
+      const gap = i === 20 ? 0.5 : 1.2;
+      silences.push({ start: t, end: t + gap });
+      t += gap;
+    }
+  }
+  const r = proposeSegments(silences, t, []);
+  assert.equal(r.candidates.length, 53);
+  assert.equal(r.segments.filter((s) => s.start !== null).length, 54);
+  assert.ok(r.segments.some((s) => s.evidence === "silence-split"));
+  assert.ok(r.segments.every((s) => !s.confirmed && s.confidence <= 0.15));
+});
+test("restarted question numbering marks a new test window with its own anchors", () => {
+  const transcript = [
+    { start: 2, end: 4, text: "Question one." },
+    { start: 10, end: 12, text: "Number two." },
+    { start: 58, end: 60, text: "Question one." },
+    { start: 70, end: 72, text: "Number two." },
+  ];
+  const r = proposeSegments([], 120, transcript);
+  assert.equal(r.anchors.filter((a: any) => a.restart).length, 1);
+  assert.equal(r.windows.length, 2);
+  assert.equal(r.windows[0].candidates.length, 1);
+  assert.equal(r.segments[0].start, 0);
+  assert.equal(r.segments[1].start, 10);
+  const r2 = proposeSegments([], 120, transcript, new Map(), { window: 1 });
+  assert.equal(r2.selectedWindow, 1);
+  assert.equal(r2.segments[0].start, 58);
+  assert.equal(r2.segments[1].start, 70);
+  assert.ok(r2.segments.every((s) => !s.confirmed));
 });

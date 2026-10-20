@@ -72,7 +72,10 @@ export function AudioEditor() {
     [cursor, setCursor] = useState(0),
     [zoom, setZoom] = useState(0.5),
     [noise, setNoise] = useState(-35),
-    [minSilence, setMinSilence] = useState(0.7),
+    [questionGap, setQuestionGap] = useState(0.8),
+    [boundaryGap, setBoundaryGap] = useState(4),
+    [autoBoundary, setAutoBoundary] = useState(true),
+    [windowSel, setWindowSel] = useState<number | null>(null),
     [preview, setPreview] = useState(0),
     [dirty, setDirty] = useState(false),
     [busy, setBusy] = useState(false),
@@ -587,20 +590,49 @@ export function AudioEditor() {
                   />
                 </label>
                 <label>
-                  Lặng tối thiểu (s)
+                  Ngừng giữa câu ≥ (s)
                   <input
-                    aria-label="Khoảng lặng tối thiểu"
+                    aria-label="Khoảng ngừng giữa câu tối thiểu"
                     type="number"
-                    min=".15"
+                    min=".2"
                     max="10"
-                    step=".05"
-                    value={minSilence}
-                    onChange={(e) => setMinSilence(+e.target.value)}
+                    step=".1"
+                    value={questionGap}
+                    onChange={(e) => setQuestionGap(+e.target.value)}
+                  />
+                </label>
+                <label>
+                  Ngừng chuyển đề ≥ (s)
+                  <input
+                    aria-label="Khoảng ngừng chuyển đề tối thiểu"
+                    type="number"
+                    min="1"
+                    max="60"
+                    step=".5"
+                    value={boundaryGap}
+                    onChange={(e) => setBoundaryGap(+e.target.value)}
+                  />
+                </label>
+                <label>
+                  Tự nhận diện ngưỡng chuyển đề
+                  <input
+                    aria-label="Tự nhận diện ngưỡng chuyển đề"
+                    type="checkbox"
+                    checked={autoBoundary}
+                    onChange={(e) => setAutoBoundary(e.target.checked)}
                   />
                 </label>
                 <Button
                   disabled={!canWork}
-                  onClick={() => void action("detect", { noise, minSilence })}
+                  onClick={() =>
+                    void action("detect", {
+                      noise,
+                      questionGap,
+                      boundaryGap,
+                      autoBoundary,
+                      window: windowSel,
+                    })
+                  }
                 >
                   <WandSparkles size={16} /> Auto Detect
                 </Button>
@@ -618,8 +650,11 @@ export function AudioEditor() {
                   <Save size={16} /> Save Mapping
                 </Button>
                 <p>
-                  Auto Detect thay bản nháp và xóa xác nhận cũ. 54 đoạn không
-                  chứng minh khớp đề; mọi đề xuất đều cần kiểm tra.
+                  Auto Detect phân loại khoảng ngừng: ngắn trong lời thoại
+                  (không cắt), giữa câu, chuyển đề/phần — rồi chỉ ánh xạ trong
+                  một đề. Đổi ngưỡng sẽ đề xuất lại từ khoảng lặng đã phát
+                  hiện, không chạy lại FFmpeg. 54 đoạn không chứng minh khớp
+                  đề; mọi đề xuất đều cần kiểm tra.
                 </p>
               </div>
               <div className="audio-job-list">
@@ -930,6 +965,62 @@ export function AudioEditor() {
                   {detectResult?.candidates?.length || 0} ứng viên khoảng lặng ·
                   chưa xác định nội dung
                 </summary>
+                {detectResult?.gapStats && (
+                  <p className="notice">
+                    Khoảng ngừng: {detectResult.gapStats.boundary} chuyển đề/phần
+                    (ngưỡng {Number(detectResult.boundaryThreshold || 0).toFixed(1)}
+                    s) · {detectResult.gapStats.question} giữa câu ·{" "}
+                    {detectResult.gapStats.micro} ngắn trong lời thoại (không
+                    cắt).
+                  </p>
+                )}
+                {detectResult?.windows?.length > 0 && (
+                  <div className="window-list">
+                    <p>
+                      {detectResult.windows.length} đề/đoạn ứng viên · đang ánh
+                      xạ đề {(detectResult.selectedWindow ?? 0) + 1}. Chọn đúng
+                      đề trước khi tinh chỉnh slot.
+                    </p>
+                    {detectResult.windows.map((w: any) => (
+                      <button
+                        key={w.index}
+                        className={
+                          w.index === detectResult.selectedWindow
+                            ? "active"
+                            : ""
+                        }
+                        title={w.note}
+                        onClick={() => {
+                          setWindowSel(w.index);
+                          void action("detect", {
+                            noise,
+                            questionGap,
+                            boundaryGap,
+                            autoBoundary,
+                            window: w.index,
+                          });
+                        }}
+                      >
+                        Đề {w.index + 1}: {w.start.toFixed(0)}–
+                        {w.end.toFixed(0)}s · {w.count} ứng viên
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setWindowSel(null);
+                        void action("detect", {
+                          noise,
+                          questionGap,
+                          boundaryGap,
+                          autoBoundary,
+                          window: null,
+                        });
+                      }}
+                    >
+                      Tự chọn đề
+                    </button>
+                  </div>
+                )}
                 <p>
                   Gán ứng viên vào slot đang chọn để nghe kiểm tra. Không tự coi
                   ứng viên thứ N là nhóm TOEIC thứ N.
