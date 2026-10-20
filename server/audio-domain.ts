@@ -179,45 +179,238 @@ export function spokenNumber(text: string) {
   }
   return n;
 }
+/** Số từ đọc được trong audio TOEIC. */
+const numberWords = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+  "thirty",
+  "forty",
+  "fifty",
+  "sixty",
+  "seventy",
+  "eighty",
+  "ninety",
+  "hundred",
+];
+const numberPattern = `(?:\\d{1,3}|(?:${numberWords.join("|")})(?:[ -]+(?:${numberWords.join("|")}))*)`;
+// "Number 7." · "Question 71-73" · "Questions 32 through 34" · "Question one."
+const markerPattern = new RegExp(
+  `\\b(?:questions?|number)\\s+(${numberPattern})(\\s*(?:through|to|-|–|—)\\s*(${numberPattern}))?`,
+  "gi",
+);
+/** Mốc chỉ hợp lệ khi đứng đầu câu — "van number five" nằm giữa câu là số đếm, không phải mốc câu hỏi. */
+function startsSentence(before: string) {
+  const trimmed = before.trim();
+  if (!trimmed) return true;
+  return /[.!?]["'’”)\]]*$/.test(trimmed);
+}
+/** Mốc dạng chữ phải kết thúc câu để không nhầm "question one of the people". */
+function endsSentence(text: string, index: number) {
+  const rest = text.slice(index).trim();
+  return !rest || /^[.!?]/.test(rest);
+}
+/** Đọc chuỗi số nghiêm ngặt: trả về null nếu không phải số hoàn chỉnh. */
+function parseNumber(text: string): number | null {
+  const clean = text.toLowerCase().trim();
+  if (/^\d{1,3}$/.test(clean)) return +clean;
+  const words = clean.split(/[ -]+/).filter((w) => w && w !== "and");
+  if (!words.length) return null;
+  let n = 0,
+    used = 0;
+  for (const w of words) {
+    if (!(w in small)) break;
+    if (w === "hundred") n = Math.max(1, n) * 100;
+    else n += small[w];
+    used++;
+  }
+  return used === words.length && used > 0 ? n : null;
+}
+export type TranscriptMarker = {
+  /** Số câu được công bố. */
+  question: number;
+  /** Thời điểm bắt đầu mốc. */
+  time: number;
+  /** Thời điểm kết thúc đoạn transcript chứa mốc. */
+  end: number;
+  /** Cụm từ đã nghe được. */
+  text: string;
+  /** Mốc công bố cả nhóm: "Questions 32 through 34". */
+  group: boolean;
+  /** Số câu cuối của nhóm khi mốc là dạng khoảng. */
+  groupEnd?: number;
+};
+/**
+ * Trích mọi mốc “số câu” trong transcript.
+ *
+ * Audio TOEIC thật công bố câu ở đầu đoạn thoại: “Number 7.”, “Questions 32
+ * through 34 refer to…”. Chỉ nhận mốc đứng đầu câu, vì trong lời thoại có
+ * những cụm như “van number five” — nếu nhận cả, file bị chia nhầm thành
+ * nhiều đề và ánh xạ chỉ còn một phần.
+ */
+export function transcriptMarkers(transcript: Transcript[]): TranscriptMarker[] {
+  const markers: TranscriptMarker[] = [];
+  for (const t of transcript) {
+    const text = String(t.text || "");
+    if (!text) continue;
+    markerPattern.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = markerPattern.exec(text))) {
+      const before = text.slice(0, m.index);
+      if (!startsSentence(before)) continue;
+      const question = parseNumber(m[1]);
+      if (question === null || question < 1 || question > 100) continue;
+      const isRange = !!m[2];
+      let groupEnd: number | undefined;
+      if (isRange) {
+        const last = parseNumber(m[3]);
+        if (last === null) continue;
+        groupEnd = last;
+      } else if (!/^\d/.test(m[1]) && !endsSentence(text, m.index + m[0].length))
+        continue;
+      const prefix = before.trim().split(/\s+/).filter(Boolean).length;
+      let time = t.start;
+      if (t.words?.[prefix]) time = t.words[prefix].start;
+      markers.push({
+        question,
+        time,
+        end: t.end,
+        text: m[0],
+        group: isRange,
+        groupEnd,
+      });
+    }
+  }
+  markers.sort((a, b) => a.time - b.time);
+  return markers;
+}
 export function transcriptAnchors(transcript: Transcript[]) {
+  const markers = transcriptMarkers(transcript);
   const anchors: {
     question: number;
     time: number;
     text: string;
     restart: boolean;
+    groupEnd?: number;
   }[] = [];
-  for (const t of transcript) {
-    const regex =
-      /\b(?:questions?|number)\s+((?:\d{1,3})|(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)(?:[ -]+(?:one|two|three|four|five|six|seven|eight|nine|hundred))?))\b/gi;
-    for (const m of t.text.matchAll(regex)) {
-      const question = spokenNumber(m[1]);
-      const g = listeningGroups.find((g) => g.questionStart === question);
-      if (!g) continue;
-      let time = t.start;
-      const prefix = t.text
-        .slice(0, m.index)
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean).length;
-      if (t.words?.[prefix]) time = t.words[prefix].start;
-      // Không khử trùng số câu trên toàn file: “Question one” lặp lại là
-      // dấu hiệu bắt đầu đề mới, không phải bản ghi trùng.
-      if (
-        anchors.some(
-          (a) => a.question === question && Math.abs(a.time - time) < 1,
-        )
+  for (const mk of markers) {
+    const g = listeningGroups.find((g) => g.questionStart === mk.question);
+    if (!g) continue;
+    // Không khử trùng số câu trên toàn file: “Question one” lặp lại là
+    // dấu hiệu bắt đầu đề mới, không phải bản ghi trùng.
+    if (
+      anchors.some(
+        (a) => a.question === mk.question && Math.abs(a.time - mk.time) < 1,
       )
-        continue;
-      anchors.push({ question, time, text: m[0], restart: false });
-    }
+    )
+      continue;
+    anchors.push({
+      question: mk.question,
+      time: mk.time,
+      text: mk.text,
+      restart: false,
+      groupEnd: mk.groupEnd,
+    });
   }
   anchors.sort((a, b) => a.time - b.time);
+  // Đề mới trong cùng file chỉ khi số câu bắt đầu lại từ đầu Part 1 và các
+  // câu sau tăng đền. Một số đếm nói trong lời thoại không tạo được đề mới.
+  const firstPartMax = listeningGroups
+    .filter((g) => g.part === 1)
+    .reduce((max, g) => Math.max(max, g.questionEnd), 0);
   let highest = 0;
-  for (const a of anchors) {
-    if (a.question < highest) a.restart = true;
+  for (let i = 0; i < anchors.length; i++) {
+    const a = anchors[i];
+    const decreased = a.question < highest;
     highest = Math.max(highest, a.question);
+    if (!decreased || a.question > firstPartMax) continue;
+    const continues = anchors
+      .slice(i + 1)
+      .some((x) => x.question === a.question + 1);
+    if (continues) a.restart = true;
   }
   return anchors;
+}
+/**
+ * Ranh giới 54 nhóm TOEIC dựa trên mốc số câu trong transcript.
+ *
+ * - start: mốc công bố của nhóm (“Number 7.”, “Questions 32 through 34…”).
+ * - end: mốc của nhóm kế tiếp. Khi sang Part mới thì cắt tại khoảng ngừng
+ *   chuyển phần để không nuốt phần hướng dẫn của Part sau.
+ */
+export function groupBoundaries(
+  markers: TranscriptMarker[],
+  gaps: ClassifiedGap[],
+  inWindow: (t: number) => boolean,
+  windowEnd: number,
+) {
+  const bounds = new Map<
+    number,
+    { start: number | null; end: number | null; cut: "anchor" | "part" | "window" }
+  >();
+  for (const g of listeningGroups) {
+    const anchor =
+      markers.find((m) => m.question === g.questionStart && inWindow(m.time)) ??
+      null;
+    const next = listeningGroups.find((x) => x.slot === g.slot + 1);
+    const nextAnchor = next
+      ? (markers.find(
+          (m) => m.question === next.questionStart && inWindow(m.time),
+        ) ?? null)
+      : null;
+    let end: number | null = null;
+    let cut: "anchor" | "part" | "window" = "window";
+    if (nextAnchor) {
+      end = nextAnchor.time;
+      cut = "anchor";
+      if (next && next.part !== g.part) {
+        const lastQuestion = markers
+          .filter(
+            (m) =>
+              m.question >= g.questionStart &&
+              m.question <= g.questionEnd &&
+              inWindow(m.time),
+          )
+          .map((m) => m.time)
+          .sort((a, b) => a - b)
+          .pop();
+        const from = lastQuestion ?? anchor?.time ?? 0;
+        const boundary = gaps
+          .filter(
+            (x) =>
+              x.kind === "boundary" && x.start > from && x.end <= nextAnchor.time,
+          )
+          .sort((a, b) => a.start - b.start)
+          .pop();
+        if (boundary) {
+          end = boundary.end;
+          cut = "part";
+        }
+      }
+    } else if (!next) {
+      end = windowEnd;
+    }
+    bounds.set(g.slot, { start: anchor ? anchor.time : null, end, cut });
+  }
+  return bounds;
 }
 export type GapKind = "micro" | "question" | "boundary";
 export type ClassifiedGap = Silence & { duration: number; kind: GapKind };
@@ -665,21 +858,29 @@ export function proposeSegments(
         " Chỉ là đề xuất theo khoảng lặng; cần nghe kiểm tra và xác nhận thủ công.";
     }
   const inWindow = (t: number) => t >= win.start - 0.05 && t < win.end - 0.001;
+  const markers = transcriptMarkers(transcript);
+  const bounds = groupBoundaries(markers, gaps, inWindow, win.end);
   // Lớp 2: mốc số câu nói trong transcript (trong phạm vi đề đang chọn).
   for (const s of segments) {
-    const a = anchors.find(
-      (a) => a.question === s.questionStart && inWindow(a.time),
+    const a = markers.find(
+      (m) => m.question === s.questionStart && inWindow(m.time),
     );
     if (!a) continue;
-    const next = listeningGroups.find((g) => g.slot === s.slot + 1),
-      nextAnchor = anchors.find(
-        (a) => a.question === next?.questionStart && inWindow(a.time),
-      );
-    s.start = s.slot === 1 ? win.start : a.time;
-    s.end = s.slot === 54 ? win.end : (nextAnchor?.time ?? null);
+    const b = bounds.get(s.slot)!,
+      fallback = base?.slots[s.slot - 1] ?? null;
+    const start = b.start ?? fallback?.start ?? null,
+      end = b.end ?? fallback?.end ?? null;
+    if (start === null) continue;
+    s.start = start;
+    if (end !== null) s.end = end;
     s.confidence = tPrecision(transcript, a.time) ? 0.78 : 0.62;
     s.evidence = "spoken-number";
     s.reason = `Transcript có mốc “${a.text}”. Timestamp cần nghe kiểm tra; chưa xác nhận khớp nội dung đề.`;
+    if (b.cut === "part")
+      s.reason +=
+        " Ranh giới cuối cắt tại khoảng ngừng chuyển Part, không nuốt hướng dẫn của Part sau.";
+    else if (b.cut === "window")
+      s.reason += " Ranh giới cuối là cuối đoạn đang ánh xạ.";
     if (s.end !== null && s.end <= s.start) {
       s.end = null;
       s.confidence = 0.2;
@@ -700,7 +901,7 @@ export function proposeSegments(
   }
   // Lớp 3: khớp từ khóa transcript ↔ nội dung câu hỏi cho slot chưa có mốc.
   for (const s of segments) {
-    if (anchors.some((a) => a.question === s.questionStart && inWindow(a.time)))
+    if (markers.some((m) => m.question === s.questionStart && inWindow(m.time)))
       continue;
     const source = questionTexts.get(s.questionStart);
     if (!source || !transcript.length) continue;
