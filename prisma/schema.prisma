@@ -97,6 +97,7 @@ model AudioMapping {
  @@unique([testId,sequence])
 }
 model ImportJob {
+  section String @default("reading")
  id String @id
  documentId String
  status String

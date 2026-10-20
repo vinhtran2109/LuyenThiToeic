@@ -36,7 +36,8 @@ Khi API đang chạy, `npx tsx server/api-smoke.ts` kiểm tra tích hợp datab
 ## Các giới hạn hiện tại
 
 - Tệp yêu cầu đầu vào bị ngắt ở mục 8, ngay sau “Listening khoảng”. Phần triển khai dựa trên nội dung nhận được.
-- OCR Reading dùng Tesseract.js (English) và PDF.js, xác định số câu 101–200 và nhóm đoạn đọc. Đề luyện hiển thị ảnh gốc cùng các nút A/B/C/D; chưa tái dựng toàn bộ câu hỏi thành văn bản hay bảng HTML. Vị trí thiếu/trùng phải đối chiếu trước khi mở đề. Chưa hỗ trợ tự chuyển Listening hoặc gộp nhiều PDF.
+- OCR Reading dùng Tesseract.js (English) và PDF.js, xác định số câu 101–200 và nhóm đoạn đọc. Đề luyện hiển thị ảnh gốc cùng các nút A/B/C/D; chưa tái dựng toàn bộ câu hỏi thành văn bản hay bảng HTML. Vị trí thiếu/trùng phải đối chiếu trước khi mở đề.
+- OCR Listening dùng cùng bộ đọc nhưng tái dựng được câu hỏi thành văn bản: Part 3–4 có sẵn trong booklet, Part 1 là ảnh (cắt từ trang gốc), Part 2 không in gì nên lấy từ transcript audio. Câu nào OCR chưa đọc được được đánh dấu để người dùng sửa ở tab **Biên tập câu hỏi**; chỗ đó vẫn giữ đủ lựa chọn A–D để bài thi vẫn làm được. Chưa hỗ trợ gộp nhiều PDF.
 - Biên tập hiện giữ cố định Part và nhóm chuẩn; chưa có gộp/tách nhóm và đổi Part. Passage lưu văn bản có xuống dòng; tài liệu phức tạp xem bản PDF gốc, chưa có rich-text/table editor.
 - Audio Studio dùng FFmpeg/FFprobe và hỗ trợ MP3, WAV, M4A. Thời lượng và nội dung mỗi mapping cần người dùng nghe xác minh. Vị trí Listening lưu khoảng mỗi 2 giây; tải lại cần nhấn tiếp tục. Audio TOEIC thật chưa được cung cấp.
 - Thi thử bắt đầu sau xác nhận sẵn sàng; hết trình tự audio chuyển sang Reading với deadline riêng 75 phút, không quay lại Listening. Thời lượng audio thực tế do mapping quyết định. Chưa kiểm thử bằng bộ đề/audio chính thức vì chưa được cung cấp.
@@ -55,6 +56,18 @@ Các model Test → Question (Part, groupId, passage, image, confirmed key), Att
 Trong Quản lý tài liệu → Chuyển PDF thành đề, chọn PDF rồi cấu hình số đề, số trang mỗi đề và số trang bìa. Pipeline hiện hỗ trợ các đề Reading có cấu trúc trang đồng đều. Nhấn nhận dạng để tạo bản nháp, đối chiếu vị trí được gắn cờ rồi đưa vào luyện tập. Job lưu SQLite; ảnh trang, OCR và các vị trí đã sửa lưu tại `uploads/import-<documentId>/`. Khi khởi động lại máy chủ giữa chừng, dùng nút tiếp tục để chạy từ cache. Mô hình English tải ở lần đầu và lưu `uploads/.ocr-cache/`; các lần sau chạy cục bộ.
 
 Tài liệu 1000 READING đã chuyển thành 10 đề, mỗi đề 100 câu (Part 5:30, Part 6:16, Part 7:54), 75 phút. 36 vị trí bị OCR bỏ sót/trùng đã đối chiếu với bản scan. Các nhóm nhiều trang giữ cả trang tài liệu và trang câu hỏi. Nút zoom, đổi trang và mở ảnh gốc giúp đọc bản scan. Đã đối chiếu và gắn 1.000 đáp án từ PDF đáp án ETS 2024 RC cho 10 đề. Bài nộp được chấm đúng/sai/bỏ trống trên 100 câu, có đáp án để xem lại. Bảng nguồn chưa có lời giải chi tiết hoặc quy đổi điểm TOEIC nên không tự tạo các dữ liệu này.
+
+## Chuyển PDF scan thành đề Listening
+
+Cùng đường dẫn đó, nhưng chọn tab **Listening** (Quản lý tài liệu → Chuyển PDF thành đề → Listening). Booklet TOEIC có cấu trúc khác Reading nên phần này đọc PDF theo đúng cấu trúc Listening:
+
+- Part 3–4 (câu 32–100) in sẵn trong booklet: lấy thân câu và lựa chọn (A)–(D) từ OCR, dựng lại theo toạ độ nên không lẫn hai cột.
+- Part 1 (câu 1–6) là **ảnh**: ảnh được tách từ trang gốc bằng cách đo mật độ pixel, nhãn số câu nằm ngay bên trái mép ảnh nên dùng làm tín hiệu phân ảnh. Ảnh hiện thẳng trong câu hỏi.
+- Part 2 (câu 7–31) **không in gì** trong booklet — câu hỏi và ba lựa chọn nằm trong audio, nên ứng dụng lấy từ transcript của file audio đã tải (đoán số đề từ tên file, ví dụ `TEST 01.mp3` → Test 01). Chưa có audio thì câu đó để trống cho tới khi bạn thêm audio.
+- Số câu đôi khi bị OCR rơi mất (chỉ còn dấu "."): khôi phục theo số câu liền kề trong cột.
+- Lựa chọn nào chưa đọc được vẫn giữ đủ chỗ A–D để bài thi làm được, và câu đó được gắn cờ để sửa ở tab Biên tập câu hỏi.
+
+Tài liệu 1000 LISTENING (130 trang, 10 đề × 13 trang) đã chuyển thành 10 đề Listening, mỗi đề 100 câu (6/25/39/30 ở Part 1/2/3/4), kèm 1.000 đáp án từ PDF đáp án ETS 2024 LC. Test 01 đã ghép với `TEST 01.mp3` nên phát được audio và chấm điểm đầy đủ. Việc khớp bộ đáp án với booklet đã được kiểm tra độc lập bằng ảnh Part 1 và nội dung transcript.
 
 Kiểm thử tích hợp dữ liệu đã nhập: `npx tsx server/reading-smoke.ts` (yêu cầu API đang chạy và tài liệu này đã được nhập). Kiểm tra 10 đề/1.000 câu, ảnh nguồn, cấu trúc, nhóm nhiều trang, lưu/khôi phục/nộp bài và deadline Reading. Các bản ghi bài làm QA được xóa sau kiểm thử.
 

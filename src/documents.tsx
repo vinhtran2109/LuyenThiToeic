@@ -16,6 +16,7 @@ import type { Doc, Test, Mapping, Question } from "./types";
 import { Button } from "./components/ui/button";
 import { Link } from "react-router-dom";
 import { ReadingImportPanel } from "./components/reading-import-panel";
+import { ListeningImportPanel } from "./components/listening-import-panel";
 import { AnswerKeyLibrary } from "./components/answer-key-library";
 const PdfPreview = lazy(() =>
   import("./components/pdf-preview").then((module) => ({
@@ -27,6 +28,7 @@ export function Documents() {
       () => new URLSearchParams(window.location.search).get("tab") || "files",
     ),
     [docs, setDocs] = useState<Doc[]>([]),
+    [importKind, setImportKind] = useState<"reading" | "listening">("reading"),
     [tests, setTests] = useState<Test[]>([]),
     [testId, setTestId] = useState("sample-1"),
     [selected, setSelected] = useState<Doc>(),
@@ -275,7 +277,29 @@ export function Documents() {
           </div>
         </>
       )}
-      {tab === "import" && <ReadingImportPanel docs={docs} onUpdated={load} />}
+      {tab === "import" && (
+        <>
+          <div className="tabs sub-tabs">
+            {[
+              ["reading", "Reading"],
+              ["listening", "Listening"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setImportKind(id as "reading" | "listening")}
+                className={importKind === id ? "active" : ""}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {importKind === "reading" ? (
+            <ReadingImportPanel docs={docs} onUpdated={load} />
+          ) : (
+            <ListeningImportPanel docs={docs} onUpdated={load} />
+          )}
+        </>
+      )}
       {tab === "audio" && (
         <>
           <div className="notice">

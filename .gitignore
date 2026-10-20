@@ -12,3 +12,8 @@ artifacts/audio-tests/*.wav
 artifacts/audio-tests/*.m4a
 
 artifacts/answer-keys/*.db*
+
+artifacts/listening-import/scan-test01/
+artifacts/listening-import/scan-probe/
+artifacts/listening-import/photo-probe-*.jpg
+artifacts/listening-import/page-*.png

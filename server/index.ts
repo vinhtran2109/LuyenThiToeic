@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import { seed } from "./seed";
 import { grade, inSection, mappingConflict, partOf } from "./core";
 import { runReadingImport } from "./reading-import";
+import { runListeningImport } from "./listening-import";
 import { audioRouter } from "./audio-api";
 import { listeningGroups } from "./audio-domain";
 import { probeAudio } from "./audio-ffmpeg";
@@ -560,6 +561,14 @@ app.get(
     ),
   ),
 );
+/** Mỗi tài liệu có một job cho Reading và một job cho Listening. */
+async function findImportJob(docId: string, section: "reading" | "listening") {
+  const jobs = await db.importJob.findMany({
+    where: { documentId: docId, section },
+    orderBy: { createdAt: "desc" },
+  });
+  return jobs[0];
+}
 app.post(
   "/api/documents/:id/reading-import",
   wrap(async (req: any, res: any) => {
@@ -568,10 +577,7 @@ app.post(
     });
     if (!doc.path.endsWith(".pdf")) throw Error("Chọn tài liệu PDF.");
     const config = importConfig.parse(req.body);
-    const existing = await db.importJob.findFirst({
-      where: { documentId: doc.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const existing = await findImportJob(doc.id, "reading");
     if (existing) {
       if (["queued", "ocr", "error"].includes(existing.status))
         void runReadingImport(db, existing.id, config);
@@ -581,13 +587,42 @@ app.post(
       data: {
         id: randomUUID(),
         documentId: doc.id,
+        section: "reading",
         status: "queued",
         message: "Đang khởi động OCR trên máy của bạn…",
-        result: JSON.stringify({ config }),
+        result: JSON.stringify({ config, section: "reading" }),
       },
     });
-    res.status(202).json({ ...job, result: { config } });
+    res.status(202).json({ ...job, result: { config, section: "reading" } });
     void runReadingImport(db, job.id, config);
+  }),
+);
+app.post(
+  "/api/documents/:id/listening-import",
+  wrap(async (req: any, res: any) => {
+    const doc = await db.document.findUniqueOrThrow({
+      where: { id: req.params.id },
+    });
+    if (!doc.path.endsWith(".pdf")) throw Error("Chọn tài liệu PDF.");
+    const config = importConfig.parse(req.body);
+    const existing = await findImportJob(doc.id, "listening");
+    if (existing) {
+      if (["queued", "ocr", "error"].includes(existing.status))
+        void runListeningImport(db, existing.id, config);
+      return res.json({ ...existing, result: JSON.parse(existing.result) });
+    }
+    const job = await db.importJob.create({
+      data: {
+        id: randomUUID(),
+        documentId: doc.id,
+        section: "listening",
+        status: "queued",
+        message: "Đang khởi động OCR trên máy của bạn…",
+        result: JSON.stringify({ config, section: "listening" }),
+      },
+    });
+    res.status(202).json({ ...job, result: { config, section: "listening" } });
+    void runListeningImport(db, job.id, config);
   }),
 );
 app.put(
@@ -643,16 +678,34 @@ app.post(
       return res.json({ ok: true, result: JSON.parse(job.result) });
     if (job.status !== "review") throw Error("OCR chưa hoàn tất.");
     const result = JSON.parse(job.result);
+    const section = job.section ?? result.section ?? "reading";
     const tests = await db.test.findMany({
       where: { id: { in: result.tests.map((t: any) => t.testId) } },
       include: { questions: true },
     });
     if (tests.length !== result.config.testCount) throw Error("Thiếu bộ đề.");
     for (const t of tests) {
-      if (
-        t.questions.length !== 100 ||
+      if (t.questions.length !== 100) throw Error("Đề chưa đủ 100 câu.");
+      if (new Set(t.questions.map((q) => q.number)).size !== 100)
+        throw Error("Đề có câu hỏi trùng số.");
+      if (section === "listening") {
+        // Listening: 6/25/39/30 câu ở Part 1/2/3/4, mỗi nhóm có groupId đúng.
+        if (
+          [1, 2, 3, 4].some(
+            (p, i) =>
+              t.questions.filter((q) => q.part === p).length !==
+              [6, 25, 39, 30][i],
+          ) ||
+          listeningGroups.some((g) => {
+            const group = t.questions.filter(
+              (q) => q.number >= g.questionStart && q.number <= g.questionEnd,
+            );
+            return group.some((q) => q.part !== g.part || q.groupId !== group[0].groupId);
+          })
+        )
+          throw Error("Cấu trúc đề Listening chưa hợp lệ.");
+      } else if (
         t.questions.some((q) => q.needsReview) ||
-        new Set(t.questions.map((q) => q.number)).size !== 100 ||
         [5, 6, 7].some(
           (p, i) =>
             t.questions.filter((q) => q.part === p).length !== [30, 16, 54][i],
@@ -671,7 +724,9 @@ app.post(
         where: { id: job.id },
         data: {
           status: "published",
-          message: `Đã tạo ${tests.length} đề Reading để luyện tập.`,
+          message: `Đã tạo ${tests.length} đề ${
+            section === "listening" ? "Listening" : "Reading"
+          } để luyện tập.`,
         },
       }),
       db.document.update({
