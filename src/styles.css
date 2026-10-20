@@ -1729,6 +1729,29 @@ textarea {
   flex-direction: column;
   gap: 12px;
 }
+.options.letters-only {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.options.letters-only .option {
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+.options.letters-only .option > span {
+  width: 44px;
+  height: 44px;
+  font-size: 17px;
+}
+.listening-choice-note {
+  font-size: 10px;
+  color: #8a9c7a;
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
 .option {
   display: flex;
   align-items: center;

@@ -545,8 +545,27 @@ export function Exam() {
                   </button>
                 </div>
                 <h3>{q.prompt}</h3>
-                <div className="options">
-                  {q.options.map((opt, i) => {
+                {current.part === 1 && (
+                  <p className="listening-choice-note">
+                    Lựa chọn của Part 1 được đọc trong audio. Bấm chữ cái tương ứng
+                    khi nghe xong.
+                  </p>
+                )}
+                {current.part === 2 && (
+                  <p className="listening-choice-note">
+                    Part 2 chỉ có 3 lựa chọn (A, B, C) và được đọc trong audio, không
+                    in trong đề.
+                  </p>
+                )}
+                <div
+                  className={
+                    "options" +
+                    (current.part === 1 || current.part === 2 ? " letters-only" : "")
+                  }
+                >
+                  {q.options
+                    .slice(0, current.part === 2 ? 3 : q.options.length)
+                    .map((opt, i) => {
                     const letter = String.fromCharCode(65 + i);
                     return (
                       <button
@@ -566,13 +585,15 @@ export function Exam() {
                         }
                       >
                         <span>{letter}</span>
-                        <div>{opt}</div>
+                        {current.part !== 1 && current.part !== 2 && (
+                          <div>{opt}</div>
+                        )}
                         {state.answers[q.number] === letter && (
                           <Check size={17} />
                         )}
                       </button>
                     );
-                  })}
+                    })}
                 </div>
               </div>
             ))}
@@ -802,7 +823,9 @@ export function Result() {
               </details>
             )}
             <div className="review-options">
-              {q.options.map((opt, i) => {
+              {q.options
+                .slice(0, q.part === 2 ? 3 : q.options.length)
+                .map((opt, i) => {
                 const l = String.fromCharCode(65 + i);
                 return (
                   <div
