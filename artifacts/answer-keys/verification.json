@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "rcTests": 10,
+  "rcAnswers": 1000,
+  "lcSetsPending": 10,
+  "lcAnswers": 1000,
+  "perfectScores": "10 x 100/100",
+  "wrongAndBlank": "98/100",
+  "blank": "0/100",
+  "answersHiddenUntilSubmission": true,
+  "sourceExtraction": "text layer + spatial TEST labels (not OCR)",
+  "officialScaledScoreInvented": false,
+  "browserPracticeSubmit": "passed: one correct answer gives 1/100; source key shown after submission",
+  "browserLibrary": "passed: 10 applied RC sets and 10 pending LC sets"
+}

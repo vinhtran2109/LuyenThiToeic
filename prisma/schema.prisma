@@ -1,0 +1,175 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "sqlite"
+ url = env("DATABASE_URL")
+}
+model Test {
+ id String @id
+ title String
+ year Int
+ collection String
+ description String
+ published Boolean @default(true)
+ section String @default("all")
+ sourceDocumentId String?
+ sourceStartPage Int?
+ sourceEndPage Int?
+ questions Question[]
+ attempts Attempt[]
+ answerKeys AnswerKeySet[]
+ mappings AudioMapping[]
+}
+model Question {
+ id String @id
+ testId String
+ test Test @relation(fields:[testId],references:[id])
+ number Int
+ part Int
+ groupId String
+ prompt String
+ options String
+ passage String
+ image String?
+ answer String?
+ confirmed Boolean @default(false)
+ explanation String
+ sourcePage Int?
+ sourcePages String @default("[]")
+ needsReview Boolean @default(false)
+ @@unique([testId,number])
+}
+model Attempt {
+ id String @id
+ testId String
+ test Test @relation(fields:[testId],references:[id])
+ mode String
+ section String
+ status String @default("active")
+ startedAt DateTime @default(now())
+ deadline DateTime
+ completedAt DateTime?
+ current Int @default(1)
+ answers String @default("{}")
+ flags String @default("[]")
+ correct Int?
+ gradable Int?
+ score Int?
+ elapsed Int @default(0)
+ audioIndex Int @default(0)
+ audioPosition Float @default(0)
+ phase String @default("prepared")
+}
+model Document {
+ id String @id
+ name String
+ kind String
+ path String
+ mime String
+ size Int
+ status String
+ text String @default("")
+ createdAt DateTime @default(now())
+ answerKeys AnswerKeySet[]
+ mappings AudioMapping[]
+}
+model AudioMapping {
+ id String @id
+ testId String
+ test Test @relation(fields:[testId],references:[id])
+ documentId String
+ document Document @relation(fields:[documentId],references:[id])
+ part Int
+ questionStart Int
+ questionEnd Int
+ groupId String
+ start Float
+ end Float
+ sequence Int
+ gap Float @default(0)
+ confirmed Boolean @default(false)
+ continuous Boolean @default(false)
+ playbackStart Float?
+ playbackEnd Float?
+ projectId String?
+ confidence Float @default(0)
+ @@unique([testId,sequence])
+}
+model ImportJob {
+ id String @id
+ documentId String
+ status String
+ done Int @default(0)
+ total Int @default(0)
+ message String
+ result String @default("{}")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+model AudioProject {
+ id String @id
+ documentId String
+ title String
+ testId String?
+ referenceDocumentId String?
+ duration Float @default(0)
+ metadata String @default("{}")
+ peaksPath String?
+ silences String @default("[]")
+ transcript String @default("[]")
+ revision Int @default(0)
+ publishedRevision Int?
+ viewState String @default("{}")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ segments AudioSegment[]
+ jobs AudioJob[]
+}
+model AudioSegment {
+ id String @id
+ projectId String
+ project AudioProject @relation(fields:[projectId],references:[id],onDelete:Cascade)
+ slot Int
+ part Int
+ questionStart Int
+ questionEnd Int
+ start Float?
+ end Float?
+ confirmed Boolean @default(false)
+ confidence Float @default(0)
+ evidence String @default("unknown")
+ reason String @default("Chưa xác định")
+ @@unique([projectId,slot])
+}
+model AudioJob {
+ id String @id
+ projectId String
+ project AudioProject @relation(fields:[projectId],references:[id],onDelete:Cascade)
+ kind String
+ status String @default("queued")
+ progress Int @default(0)
+ message String @default("")
+ input String @default("{}")
+ result String @default("{}")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+
+model AnswerKeySet {
+ id String @id
+ documentId String
+ document Document @relation(fields:[documentId],references:[id])
+ section String
+ testNumber Int
+ sourcePage Int
+ sourceRegion String
+ sourceSha256 String
+ answers String
+ testId String?
+ test Test? @relation(fields:[testId],references:[id],onDelete:SetNull)
+ status String @default("pending")
+ appliedAt DateTime?
+ createdAt DateTime @default(now())
+ @@unique([documentId,section,testNumber])
+}

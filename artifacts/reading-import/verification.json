@@ -1,0 +1,10 @@
+{
+  "tests": 10,
+  "questions": 1000,
+  "sourceImages": 280,
+  "structuralChecks": "passed",
+  "attemptLifecycle": "passed",
+  "readingDeadline": "passed",
+  "confirmedAnswerKeys": 100,
+  "verifiedManualLocations": 36
+}

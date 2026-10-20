@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "demoProjectId": "3eef0dd1-3c94-4be3-ada8-4a7df3936cf5",
+  "formats": [
+    "MP3 45 minutes",
+    "WAV",
+    "M4A"
+  ],
+  "checks": [
+    "FFprobe metadata",
+    "streamed precomputed waveform",
+    "54 silences remain unconfirmed/low confidence",
+    "missing/overlap/bounds validation",
+    "SQLite draft and cursor persistence",
+    "optimistic revision conflict",
+    "JSON round trip resets confirmation",
+    "source hash mismatch rejected",
+    "all 54 confirmations required",
+    "published mappings integrated into exam",
+    "original instructions/gaps preserved by playback bounds",
+    "MP3 split and ZIP manifest",
+    "timestamped local Whisper on spoken sample",
+    "invalid audio rejection",
+    "paused job resume",
+    "original SHA-256 unchanged",
+    "server restart turns running job into paused",
+    "browser drag boundary persisted across reload",
+    "browser continuous playback reaches Reading despite 54 sub-second groups",
+    "browser Resume job completes after server restart"
+  ],
+  "whisperTested": true
+}

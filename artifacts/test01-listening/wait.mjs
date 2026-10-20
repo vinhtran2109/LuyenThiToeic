@@ -1,0 +1,3 @@
+import fs from 'node:fs/promises';
+const base='http://127.0.0.1:3001/api/audio',id='21b1d2ee-6fe3-4ceb-b018-b543843233ea';
+for(let i=0;i<180;i++){const p=await(await fetch(base+'/projects/'+id)).json();const j=p.jobs.find(j=>j.kind==='transcribe');console.log(j.status,j.progress,j.message);if(j.status==='error')throw Error(j.message);if(j.status==='completed'){await fs.writeFile('artifacts/test01-listening/transcript.json',JSON.stringify(p.transcript,null,2));console.log('Transcript segments',p.transcript.length);const r=await fetch(base+'/projects/'+id+'/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});console.log('Detect with transcript',r.status,await r.json());break;}await new Promise(r=>setTimeout(r,10000));}

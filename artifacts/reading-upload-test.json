@@ -1,0 +1,25 @@
+{
+  "fileName": "1000 READING (1).pdf",
+  "documentId": "e2ac1f15-5d96-42d7-945d-301b4a9c6f97",
+  "sizeBytes": 203779801,
+  "sizeMiB": 194.34,
+  "pageCount": 290,
+  "status": "needs-ocr",
+  "actualExtractedCharacters": 0,
+  "uploadHttpStatus": 200,
+  "rangeHttpStatus": 206,
+  "sha256MatchesSource": true,
+  "notes": "Original preserved; no text layer; OCR and question extraction not implemented.",
+  "viewerChecks": [
+    "PDF.js renders page 10 with image/table content",
+    "Jump to page 290 succeeds",
+    "Zoom 125% succeeds",
+    "PDF selectable in question editor",
+    "File persists after browser reload"
+  ],
+  "regressionChecks": [
+    "TypeScript and Vite production build passed",
+    "4 core tests passed",
+    "API smoke passed"
+  ]
+}

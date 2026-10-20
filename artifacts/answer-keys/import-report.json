@@ -1,0 +1,13 @@
+{
+  "readingTests": 10,
+  "readingKeys": 1000,
+  "listeningKeysStored": 1000,
+  "listeningSetsPending": 10,
+  "regradedAttempts": 0,
+  "sourceHashes": {
+    "RC": "777db6fa1ce37de82e372bb25955a56856b655004bc2bfbc6a0a50cebfd0997f",
+    "LC": "67b969eee67c98913ed67e3d69d54d4c74fc6748b59c55a3a80b5620ffdf07fe"
+  },
+  "mapping": "spatial TEST labels; 100 unique question numbers each; RC first-page questions checked across all 10 tests",
+  "originalReadingUnchanged": true
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+prisma/*.db*
+uploads/
+artifacts/reading-import/ocr-cache/
+.audio-venv/
+__pycache__/
+
+artifacts/audio-tests/*.mp3
+artifacts/audio-tests/*.wav
+artifacts/audio-tests/*.m4a
+
+artifacts/answer-keys/*.db*
