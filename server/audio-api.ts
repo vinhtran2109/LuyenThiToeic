@@ -281,7 +281,12 @@ export function audioRouter(db: PrismaClient) {
       const body = z
         .object({
           noise: z.number().min(-80).max(-10).default(-35),
-          minSilence: z.number().min(0.15).max(10).default(0.7),
+          minSilence: z.number().min(0.15).max(10).default(0.25),
+          questionGap: z.number().min(0.2).max(10).default(0.8),
+          boundaryGap: z.number().min(1).max(60).default(4),
+          autoBoundary: z.boolean().default(true),
+          window: z.number().int().min(0).max(50).nullable().default(null),
+          reuseSilences: z.boolean().default(true),
         })
         .parse(req.body || {});
       const p = await db.audioProject.findUniqueOrThrow({
