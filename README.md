@@ -70,6 +70,19 @@ Mở `/admin/audio-editor` hoặc mục **Audio Studio**. Upload MP3/WAV/M4A t�
 5. **Save Mapping** lưu SQLite (cũng tự lưu). JSON nhập lại luôn bỏ xác nhận; SHA-256/thời lượng khác bị từ chối. Khi tải lại, bản nháp, job, slot, zoom và con trỏ được khôi phục. Job bị ngắt khi khởi động lại chuyển sang trạng thái tạm dừng để tiếp tục từ nguồn.
 6. **Split MP3** xuất slot đang chọn; **Export Segments MP3** xuất các đoạn có thời gian hợp lệ thành MP3 và ZIP kèm manifest. Không cần cắt vật lý để luyện: mapping lưu start/end. Khi thi nghiêm ngặt, audio gốc chạy liên tục, giữ cả chỉ dẫn và khoảng nghỉ; nhóm câu theo vị trí phát thực tế. Chỉ mapping đủ 54 nhóm đã xác nhận mới được xuất bản vào bộ đề Listening.
 
+### Mốc số câu và cách tách 54 nhóm
+
+Audio TOEIC thật công bố câu ở đầu đoạn thoại, nên transcript là nguồn ranh giới đáng tin hơn khoảng lặng:
+
+- Part 1–2 công bố từng câu: `Number 1.`, `Number 2.` … (mỗi câu một nhóm).
+- Part 3–4 công bố cả nhóm: `Questions 32 through 34 refer to the following conversation.` (3 câu/nhóm).
+- Chỉ mốc **đứng đầu câu** mới được tính. Số nói trong lời thoại (`van number five`) là số đếm, không phải mốc câu hỏi — nếu tính nhầm, file bị chia thành nhiều "đề" và chỉ map được một phần.
+- Một file chỉ bị coi là nhiều đề khi số câu bắt đầu lại từ đầu Part 1 và các câu sau tăng đền. Một số đếm nói trong lời thoại không tạo được ranh giới đề.
+- Nhóm 1 bắt đầu đúng tại mốc `Number 1.`, không nuốt phần bản quyền và hướng dẫn đầu file. Ranh giới cuối của nhóm cuối mỗi Part cắt tại khoảng ngừng chuyển phần nên không nuốt hướng dẫn của Part sau; khoảng hướng dẫn đó được báo ở mục "khoảng thời gian chưa gán".
+- Không có transcript thì Auto Detect vẫn chạy bằng khoảng lặng, nhưng đề xuất chỉ có độ tin cậy thấp (`silence-only`) và phải nghe kiểm tra.
+
+Đã kiểm chứng trên một file đề TOEIC thật (`TEST 01.mp3`, 2752.5s, 54 nhóm): Auto Detect ra 1 đề, đủ 54/54 nhóm có khoảng thời gian, không chồng lấn, đúng thứ tự; mỗi nhóm mở đầu đúng mốc số câu và chứa đủ các câu của nhóm. Bốn khoảng chưa gán là phần bản quyền/hướng dẫn đầu file và hướng dẫn chuyển Part (275.2–303.2s, 816.4–846.8s, 1922.5–1951.9s). Export ra 54 MP3 khớp độ dài mapping và nghe đúng nội dung.
+
 ### Whisper tùy chọn, chạy cục bộ
 
 FFmpeg/FFprobe đi kèm npm. Không cần API trả phí. Whisper dùng `faster-whisper`, CPU int8, tối đa 4 luồng; có thể bỏ qua hoàn toàn và nhập transcript JSON. Lần đầu tải model từ Hugging Face (cần Internet); nhận dạng audio chạy trên máy. Tiny/base phù hợp máy ít tài nguyên hơn small; tốc độ phụ thuộc CPU và audio 45 phút có thể xử lý lâu hơn thời gian phát. Cần đủ RAM và dung lượng cho model/cache. Máy hiện tại đã kiểm thử `tiny.en` bằng giọng nói mẫu.

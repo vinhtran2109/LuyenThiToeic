@@ -6,6 +6,7 @@ import {
   validateSegments,
   proposeSegments,
   transcriptAnchors,
+  transcriptMarkers,
   spokenNumber,
   classifyGaps,
   type Silence,
@@ -52,7 +53,8 @@ test("timestamped spoken group markers can propose boundaries, but never confirm
     { start: 10, end: 12, text: "Number two." },
     { start: 20, end: 22, text: "Questions thirty-two through thirty-four." },
   ]);
-  assert.equal(r.segments[0].start, 0);
+  // Nhóm 1 bắt đầu đúng tại mốc “Question one”, không nuốt phần đầu file.
+  assert.equal(r.segments[0].start, 4);
   assert.equal(r.segments[0].end, 10);
   assert.equal(r.segments[31].start, 20);
   assert.equal(r.segments[31].end, null);
@@ -104,9 +106,9 @@ test("transcript anchors use word timestamp when available", () => {
       {
         start: 0,
         end: 10,
-        text: "Now question one.",
+        text: "Now. Question one.",
         words: [
-          { start: 0, end: 1, word: "Now" },
+          { start: 0, end: 1, word: "Now." },
           { start: 3, end: 4, word: "question" },
           { start: 4, end: 5, word: "one" },
         ],
@@ -114,6 +116,75 @@ test("transcript anchors use word timestamp when available", () => {
     ])[0].time,
     3,
   );
+});
+test("numbers spoken inside the dialogue are not question markers", () => {
+  // “van number five” nằm giữa câu: không phải mốc câu hỏi.
+  const markers = transcriptMarkers([
+    { start: 0, end: 6, text: "We were about to pack van number five for the show." },
+    { start: 8, end: 12, text: "We can use van number three instead." },
+    { start: 20, end: 22, text: "Number 32." },
+  ]);
+  assert.deepEqual(
+    markers.map((m) => m.question),
+    [32],
+  );
+  const anchors = transcriptAnchors([
+    { start: 0, end: 6, text: "We were about to pack van number five for the show." },
+    { start: 20, end: 22, text: "Number 32." },
+  ]);
+  assert.equal(anchors.length, 1);
+  assert.equal(anchors[0].question, 32);
+});
+test("a count in the dialogue never splits a file into several tests", () => {
+  // Mốc giả “number three” làm file bị chia thành 3 đề và chỉ map được
+  // nửa đầu file — đúng lỗi đã gặp trên audio TOEIC thật.
+  const transcript = [
+    { start: 0, end: 4, text: "Number 1. Look at the picture marked number 1." },
+    { start: 20, end: 24, text: "Number 2. Look at the picture marked number 2." },
+    { start: 40, end: 46, text: "We were about to pack van number five for the show." },
+    { start: 60, end: 66, text: "We can use van number three instead." },
+    { start: 80, end: 84, text: "Number 3. Look at the picture marked number 3." },
+  ];
+  const r = proposeSegments([], 120, transcript);
+  assert.equal(r.windows.length, 1);
+  assert.equal(r.anchors.filter((a) => a.restart).length, 0);
+  assert.equal(r.segments[0].start, 0);
+  assert.equal(r.segments[1].start, 20);
+  assert.equal(r.segments[2].start, 80);
+});
+test("a full TOEIC transcript maps all 54 groups in order", () => {
+  // Transcript kiểu audio ETS: Part 1–2 công bố “Number N.”, Part 3–4
+  // công bố “Questions X through Y…”, xen một số đếm nói trong lời thoại.
+  const transcript: { start: number; end: number; text: string }[] = [];
+  let t = 0;
+  const push = (text: string) => {
+    transcript.push({ start: t, end: t + 1, text });
+    t += 25;
+  };
+  for (let q = 1; q <= 6; q++) push(`Number ${q}. Look at the picture.`);
+  for (let q = 7; q <= 31; q++) push(`Number ${q}.`);
+  push("We were about to pack van number five for the show.");
+  for (const g of listeningGroups.filter((g) => g.part === 3))
+    push(`Questions ${g.questionStart} through ${g.questionEnd} refer to the following conversation.`);
+  push("We can use van number three instead.");
+  for (const g of listeningGroups.filter((g) => g.part === 4))
+    push(`Questions ${g.questionStart} through ${g.questionEnd} refer to the following talk.`);
+  const duration = t + 10;
+  const r = proposeSegments([], duration, transcript);
+  assert.equal(r.windows.length, 1);
+  assert.equal(r.segments.filter((s) => s.start !== null && s.end !== null).length, 54);
+  assert.equal(r.segments[0].start, 0); // mốc “Number 1”
+  assert.equal(r.segments[31].start, 800); // “Questions 32 through 34”
+  const v = validateSegments(r.segments, duration);
+  assert.deepEqual(v.missing, []);
+  assert.deepEqual(v.overlaps, []);
+  assert.equal(v.outOfOrder, false);
+  for (let i = 1; i < 54; i++)
+    assert.ok(
+      r.segments[i].start! >= r.segments[i - 1].end!,
+      `slot ${i + 1} chồng lấn slot ${i}`,
+    );
+  assert.equal(r.segments[53].end, duration);
 });
 test("gap classification separates mid-speech pauses, question gaps and test-transition gaps", () => {
   const silences: Silence[] = [
@@ -258,7 +329,7 @@ test("restarted question numbering marks a new test window with its own anchors"
   assert.equal(r.anchors.filter((a: any) => a.restart).length, 1);
   assert.equal(r.windows.length, 2);
   assert.equal(r.windows[0].candidates.length, 1);
-  assert.equal(r.segments[0].start, 0);
+  assert.equal(r.segments[0].start, 2);
   assert.equal(r.segments[1].start, 10);
   const r2 = proposeSegments([], 120, transcript, new Map(), { window: 1 });
   assert.equal(r2.selectedWindow, 1);
