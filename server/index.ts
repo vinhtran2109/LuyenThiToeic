@@ -705,15 +705,15 @@ app.post(
         )
           throw Error("Cấu trúc đề Listening chưa hợp lệ.");
       } else if (
-        t.questions.some((q) => q.needsReview) ||
+        // Reading: câu hỏi và lựa chọn được đọc tự động từ bản scan, nên chỉ
+        // kiểm tra cấu trúc đề. Câu nào OCR chưa đủ lựa chọn vẫn được gắn cờ
+        // để sửa ở tab Biên tập câu hỏi, và ảnh trang gốc luôn hiện kèm.
         [5, 6, 7].some(
           (p, i) =>
             t.questions.filter((q) => q.part === p).length !== [30, 16, 54][i],
         )
       )
-        throw Error(
-          "Còn vị trí câu hỏi cần kiểm tra hoặc cấu trúc đề chưa hợp lệ.",
-        );
+        throw Error("Cấu trúc đề Reading chưa hợp lệ.");
     }
     await db.$transaction([
       db.test.updateMany({
