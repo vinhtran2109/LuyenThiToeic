@@ -36,8 +36,8 @@ export type ParsedListening = {
   needsReview: number;
 };
 
-const OPTION_RE = /^\(([A-D])\)\s*(.*)$/;
-const NUMBER_RE = /^(\d{1,3})\.\s*(.*)$/;
+const OPTION_RE = /^(?:\(([A-D])\)|([A-D])\)|([A-D])\.)\s*(.*)$/;
+const NUMBER_RE = /^(\d{1,3})[.,]\s*(.*)$/;
 const BLOCKING_RE = /^(directions?|listening test|part\s*\d)/i;
 
 type Line = {
@@ -114,7 +114,7 @@ function keepWord(word: Word, page: ScannedPage) {
  * Ranh giới lấy theo mép trái của cột phải, không theo trung điểm, để không
  * cắt nhầm vào phần chữ dài ở cột trái.
  */
-function columnBoundary(words: Word[], pageWidth: number) {
+export function columnBoundary(words: Word[], pageWidth: number) {
   const numbers = words
     .filter((w) => /^\d{1,3}\.$/.test(w.text))
     .map((w) => w.x)
@@ -140,12 +140,61 @@ function columnBoundary(words: Word[], pageWidth: number) {
   return right - pageWidth * 0.03;
 }
 
-function splitColumns(words: Word[], page: ScannedPage): Word[][] {
+export function splitColumns(words: Word[], page: ScannedPage): Word[][] {
   const boundary = columnBoundary(words, page.width);
   if (boundary === null) return [words];
   const left = words.filter((w) => w.x + w.width / 2 < boundary);
   const right = words.filter((w) => w.x + w.width / 2 >= boundary);
   return [left, right].filter((c) => c.length);
+}
+
+/**
+ * Nhãn lựa chọn đứng riêng ở đầu đoạn: “(A)”, “A)”, “A.”.
+ * Chữ đơn không kèm ngoặc/dấu chấm không được tính — “A deadline…” là chữ
+ * bắt đầu lựa chọn, không phải nhãn.
+ */
+const LABEL_WORD_RE = /^(?:\([A-Da-d][)\].]?|[A-Da-d][).])$/;
+
+type Segment = {
+  text: string;
+  x: number;
+  words: Word[];
+};
+
+/**
+ * Tesseract đôi khi gộp nhãn lựa chọn vào giữa dòng (ví dụ câu hỏi bị dính
+ * “A) Overtime pay…” ở cuối). Tách dòng theo từng nhãn để không bỏ sót lựa chọn.
+ */
+function splitByLabels(line: Line): Segment[] {
+  const words = [...line.words].sort((a, b) => a.x - b.x);
+  const segments: Segment[] = [];
+  let current: Word[] = [];
+  for (const w of words) {
+    const isLabel = LABEL_WORD_RE.test(w.text) && current.length > 0;
+    if (isLabel) {
+      segments.push({
+        text: joinWords(current),
+        x: Math.min(...current.map((c) => c.x)),
+        words: current,
+      });
+      current = [w];
+      continue;
+    }
+    current.push(w);
+  }
+  if (current.length)
+    segments.push({
+      text: joinWords(current),
+      x: Math.min(...current.map((c) => c.x)),
+      words: current,
+    });
+  return segments;
+}
+
+/** Toạ độ bắt đầu phần chữ của lựa chọn (bỏ qua nhãn ở đầu). */
+function textStartX(words: Word[]) {
+  const rest = words.slice(1);
+  return rest.length ? Math.min(...rest.map((w) => w.x)) : words[0].x;
 }
 
 /** Đọc một cột: số câu, thân câu, các lựa chọn (A)–(D). */
@@ -155,50 +204,76 @@ function parseColumn(words: Word[], page: ScannedPage, firstNumber: number) {
   let current: Draft | null = null;
   let lastOption = -1;
   let lastNumber = firstNumber - 1;
+  // Toạ độ chữ của từng lựa chọn — dùng để đoán lựa chọn tiếp theo khi
+  // OCR đọc hỏng nhãn (ví dụ “(B)” thành “2)”).
+  const optionTextX: number[] = [];
   for (const line of lines) {
-    if (BLOCKING_RE.test(line.text)) {
-      current = null;
-      lastOption = -1;
-      continue;
-    }
-    const numbered = NUMBER_RE.exec(line.text);
-    let number = numbered ? +numbered[1] : 0;
-    let rest = numbered ? numbered[2].trim() : "";
-    // OCR đôi khi rơi mất số câu, chỉ còn lại dấu chấm đầu dòng —
-    // khôi phục bằng số câu liền kề trong cột.
-    if (!numbered) {
-      const orphan = /^\.\s*(\S.*)$/.exec(line.text);
-      if (orphan && lastNumber + 1 >= 32 && lastNumber + 1 <= 100) {
-        number = lastNumber + 1;
-        rest = orphan[1].trim();
+    for (const segment of splitByLabels(line)) {
+      const text = segment.text;
+      if (BLOCKING_RE.test(text)) {
+        current = null;
+        lastOption = -1;
+        continue;
       }
+      const numbered = NUMBER_RE.exec(text);
+      let number = numbered ? +numbered[1] : 0;
+      let rest = numbered ? numbered[2].trim() : "";
+      // OCR đôi khi rơi mất số câu, chỉ còn lại dấu chấm đầu dòng —
+      // khôi phục bằng số câu liền kề trong cột.
+      if (!numbered) {
+        const orphan = /^\.\s*(\S.*)$/.exec(text);
+        if (orphan && lastNumber + 1 >= 32 && lastNumber + 1 <= 100) {
+          number = lastNumber + 1;
+          rest = orphan[1].trim();
+        }
+      }
+      if (number >= 32 && number <= 100) {
+        lastNumber = number;
+        current = {
+          number,
+          stem: rest ? [rest] : [],
+          options: [null, null, null, null],
+          page: page.page,
+          numberX: segment.x,
+        };
+        drafts.push(current);
+        lastOption = -1;
+        optionTextX.length = 0;
+        continue;
+      }
+      const option = OPTION_RE.exec(text);
+      if (option && current) {
+        const index = (option[1] || option[2] || option[3])
+          .toUpperCase()
+          .charCodeAt(0) - 65;
+        const body = option[4].trim();
+        current.options[index] = body ? [body] : [];
+        lastOption = index;
+        optionTextX[index] = textStartX(segment.words);
+        continue;
+      }
+      if (!current) continue;
+      // Nhãn lựa chọn bị OCR đọc hỏng: dòng bắt đầu ở bên trái vùng chữ của
+      // lựa chọn trước thì đây là lựa chọn kế tiếp, không phải dòng nối.
+      if (lastOption >= 0 && lastOption < 3 && !current.options[lastOption + 1]) {
+        const prevTextX = optionTextX[lastOption] ?? segment.x;
+        if (segment.x < prevTextX - 4) {
+          const index = lastOption + 1;
+          // Nhãn hỏng (“2)”, “io”) nằm ở đầu đoạn — bỏ đi, chỉ giữ chữ.
+          const stripped = text.trim().replace(/^[^\p{L}]+\s*/u, "");
+          const body =
+            stripped.length >= 3 && /\p{L}{3}/u.test(stripped) ? stripped : text.trim();
+          current.options[index] = [body];
+          lastOption = index;
+          optionTextX[index] = textStartX(segment.words);
+          continue;
+        }
+      }
+      // Chữ nằm rất xa số câu (ví dụ nhãn trong hình minh hoạ) không thuộc câu hỏi.
+      if (Math.abs(segment.x - current.numberX) > page.width * 0.22) continue;
+      const target = lastOption >= 0 ? current.options[lastOption] : current.stem;
+      if (target) target.push(text.trim());
     }
-    if (number >= 32 && number <= 100) {
-      lastNumber = number;
-      current = {
-        number,
-        stem: rest ? [rest] : [],
-        options: [null, null, null, null],
-        page: page.page,
-        numberX: line.x,
-      };
-      drafts.push(current);
-      lastOption = -1;
-      continue;
-    }
-    const option = OPTION_RE.exec(line.text);
-    if (option && current) {
-      const index = option[1].charCodeAt(0) - 65;
-      const text = option[2].trim();
-      current.options[index] = text ? [text] : [];
-      lastOption = index;
-      continue;
-    }
-    if (!current) continue;
-    // Chữ nằm rất xa số câu (ví dụ nhãn trong hình minh hoạ) không thuộc câu hỏi.
-    if (Math.abs(line.x - current.numberX) > page.width * 0.22) continue;
-    const target = lastOption >= 0 ? current.options[lastOption] : current.stem;
-    if (target) target.push(line.text.trim());
   }
   return { drafts, next: lastNumber + 1 };
 }

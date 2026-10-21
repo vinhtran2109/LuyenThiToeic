@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
     "db:push": "prisma db push",
-    "test": "tsx --test server/core.test.ts server/reading-parser.test.ts server/audio-domain.test.ts server/listening-parser.test.ts",
+    "test": "tsx --test server/core.test.ts server/reading-parser.test.ts server/reading-questions.test.ts server/audio-domain.test.ts server/listening-parser.test.ts",
     "test:audio": "tsx server/audio-integration.ts",
     "setup": "node scripts/setup.mjs"
   },

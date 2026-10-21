@@ -57,6 +57,17 @@ Trong Quản lý tài liệu → Chuyển PDF thành đề, chọn PDF rồi c�
 
 Tài liệu 1000 READING đã chuyển thành 10 đề, mỗi đề 100 câu (Part 5:30, Part 6:16, Part 7:54), 75 phút. 36 vị trí bị OCR bỏ sót/trùng đã đối chiếu với bản scan. Các nhóm nhiều trang giữ cả trang tài liệu và trang câu hỏi. Nút zoom, đổi trang và mở ảnh gốc giúp đọc bản scan. Đã đối chiếu và gắn 1.000 đáp án từ PDF đáp án ETS 2024 RC cho 10 đề. Bài nộp được chấm đúng/sai/bỏ trống trên 100 câu, có đáp án để xem lại. Bảng nguồn chưa có lời giải chi tiết hoặc quy đổi điểm TOEIC nên không tự tạo các dữ liệu này.
 
+### Câu hỏi Reading được trích từ chính bản scan
+
+Booklet in sẵn câu hỏi kèm lựa chọn (A)–(D) cho cả ba phần, nên ứng dụng đọc thẳng chữ thay vì bắt người học tự nhìn ảnh rồi đoán:
+
+- Số câu hỏi nằm ở mép hai cột nên chỉ nhận số nằm đúng dải mép — số trong lòng đoạn văn (ví dụ số đánh dấu chỗ trống trong thư Part 6) không bị tính nhầm là câu hỏi.
+- Ranh giới hai cột dựng từ chính vị trí số câu, nên trang chỉ có vài câu vẫn tách đúng, không trộn lựa chọn của hai câu.
+- Nhãn lựa chọn OCR hỏng (“(B)” thành “io”, “2)”) được đoán lại theo vị trí thụt lề và thứ tự A–D.
+- Part 5 (101–130): thân câu là câu có chỗ trống. Part 6 (131–146): câu hỏi in dạng “điền từ vào chỗ trống N”, ứng dụng ghi rõ số chỗ trống và vẫn hiện bức thư gốc để đối chiếu. Part 7 (147–200): thân câu và lựa chọn đầy đủ.
+- OCR chạy ở 2400px vì ở 1600px tesseract hay đọc hỏng nhãn lựa chọn; câu nào chưa đủ 4 lựa chọn thì giữ bản scan và gắn cờ để sửa ở tab Biên tập câu hỏi.
+
+
 ## Chuyển PDF scan thành đề Listening
 
 Cùng đường dẫn đó, nhưng chọn tab **Listening** (Quản lý tài liệu → Chuyển PDF thành đề → Listening). Booklet TOEIC có cấu trúc khác Reading nên phần này đọc PDF theo đúng cấu trúc Listening:

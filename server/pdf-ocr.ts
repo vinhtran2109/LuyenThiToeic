@@ -31,6 +31,8 @@ export async function scanPdf(
   outputDir: string,
   onProgress: (p: ScanProgress) => void = () => {},
   onlyPages?: number[],
+  /** Bề rộng ảnh dùng để OCR. Bản scan nhỏ dễ đọc hỏng nhãn “(A)” nên đề Listening dùng 2400. */
+  scale = 1600,
 ) {
   await fs.mkdir(outputDir, { recursive: true });
   await fs.mkdir(path.resolve("uploads/.ocr-cache"), { recursive: true });
@@ -63,9 +65,10 @@ export async function scanPdf(
       workers.map(async (worker) => {
         while (cursor < queue.length) {
           const pageNumber = queue[cursor++];
+          const suffix = scale === 1600 ? "" : `@${scale}`;
           const file = path.join(
             outputDir,
-            `page-${String(pageNumber).padStart(3, "0")}.json`,
+            `page-${String(pageNumber).padStart(3, "0")}${suffix}.json`,
           );
           let cached: ScannedPage | undefined;
           try {
@@ -84,7 +87,7 @@ export async function scanPdf(
           }
           const page = await pdf.getPage(pageNumber);
           const base = page.getViewport({ scale: 1 });
-          const viewport = page.getViewport({ scale: 1600 / base.width });
+          const viewport = page.getViewport({ scale: scale / base.width });
           const canvas = createCanvas(
             Math.ceil(viewport.width),
             Math.ceil(viewport.height),

@@ -130,8 +130,9 @@ export function ReadingImportPanel({
       <div className="notice">
         <FileScan size={21} />
         <span>
-          OCR chạy cục bộ để tìm vị trí câu hỏi. Đề luyện giữ ảnh gốc, bảng biểu
-          và các trang đọc liên quan. Nội dung OCR không được dùng làm đáp án.
+          OCR chạy cục bộ để đọc câu hỏi và lựa chọn trong bản scan. Đề luyện
+          giữ ảnh gốc, bảng biểu và các trang đọc liên quan. Nội dung OCR không
+          được dùng làm đáp án.
         </span>
       </div>
       <div className="card import-config">
@@ -248,8 +249,9 @@ export function ReadingImportPanel({
             </Button>
           </div>
           <p>
-            Câu hỏi và lựa chọn nằm trong ảnh gốc. Chưa có answer key; ứng dụng
-            lưu đáp án nhưng chưa chấm điểm.
+            Câu hỏi và lựa chọn được đọc thẳng từ bản scan; đoạn văn và bảng biểu
+            vẫn giữ nguyên ảnh gốc. Chưa có answer key; ứng dụng lưu đáp án nhưng
+            chưa chấm điểm.
           </p>
           <div className="table-wrap">
             <table>

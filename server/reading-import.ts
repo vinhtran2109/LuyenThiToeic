@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { scanPdf } from "./pdf-ocr";
 import { parseReading, type ReadingConfig } from "./reading-parser";
+import { extractReadingQuestions } from "./reading-questions";
 const running = new Set<string>();
 export async function runReadingImport(
   db: PrismaClient,
@@ -37,6 +38,10 @@ export async function runReadingImport(
             .catch(() => {});
         }
       },
+      undefined,
+      // Bản scan cần độ phân giải cao: ở 1600px tesseract hay đọc hỏng
+      // nhãn “(A)” thành “io”, “2)” và làm mất lựa chọn.
+      2400,
     );
     if (pages.length !== config.testCount * config.pagesPerTest)
       throw Error(
@@ -70,6 +75,9 @@ export async function runReadingImport(
         sourceEndPage: item.endPage,
         published: false,
       };
+      // Câu hỏi và lựa chọn có sẵn trong bản scan — dùng chữ thật, chỉ khi
+      // đọc đủ 4 lựa chọn mới thay bản mặc định.
+      const extracted = extractReadingQuestions(pages, item.startPage, item.endPage);
       await db.$transaction(async (tx) => {
         await tx.test.upsert({
           where: { id: testId },
@@ -78,19 +86,26 @@ export async function runReadingImport(
         });
         await tx.question.deleteMany({ where: { testId } });
         await tx.question.createMany({
-          data: item.locations.map((q) => ({
+          data: item.locations.map((q) => {
+            const found = extracted.get(q.number);
+            const options =
+              found && found.options.length === 4 && found.options.every((o) => o)
+                ? found.options
+                : ["A — theo bản gốc", "B — theo bản gốc", "C — theo bản gốc", "D — theo bản gốc"];
+            const prompt =
+              found && found.prompt.trim()
+                ? found.prompt.trim()
+                : q.part === 6
+                  ? `Điền từ đúng vào chỗ trống ${q.number} trong bức thư/đoạn văn.`
+                  : `Câu ${q.number}. Đọc câu hỏi và các lựa chọn trong bản scan gốc.`;
+            return {
             id: `${testId}-q${q.number}`,
             testId,
             number: q.number,
             part: q.part,
             groupId: q.groupId,
-            prompt: `Câu ${q.number}. Đọc câu hỏi và các lựa chọn trong bản scan gốc.`,
-            options: JSON.stringify([
-              "A — theo bản gốc",
-              "B — theo bản gốc",
-              "C — theo bản gốc",
-              "D — theo bản gốc",
-            ]),
+            prompt,
+            options: JSON.stringify(options),
             passage:
               "Nội dung và lựa chọn được giữ trong ảnh trang gốc để bảo toàn bảng biểu và bố cục. Chưa có đáp án xác nhận; bài làm sẽ được lưu nhưng chưa chấm đúng/sai.",
             image: `/uploads/import-${doc.id}/page-${String(q.page).padStart(3, "0")}.jpg`,
@@ -101,12 +116,19 @@ export async function runReadingImport(
                 url: `/uploads/import-${doc.id}/page-${String(n).padStart(3, "0")}.jpg`,
               })),
             ),
-            needsReview: q.needsReview,
+            needsReview:
+              q.needsReview ||
+              !(
+                found &&
+                found.options.length === 4 &&
+                found.options.every((o) => o)
+              ),
             answer: null,
             confirmed: false,
             explanation:
               "Chưa có đáp án xác nhận từ tài liệu. Bạn có thể nhập answer key trong Quản lý tài liệu.",
-          })),
+            };
+          }),
         });
       });
       result.push({

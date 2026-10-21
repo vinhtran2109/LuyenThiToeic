@@ -120,8 +120,122 @@ test("số câu bị rơi trong OCR được khôi phục theo thứ tự", () =
   ]);
 });
 
-test("chỉ lấy câu in sẵn, Part 1 và Part 2 nằm trong audio", () => {
+/** Dựng trang giả từ các từ có toạ độ — dùng cho các ca OCR hỏng nhãn. */
+function fakeWordsPage(
+  page: number,
+  items: { text: string; x: number; y: number }[],
+): ScannedPage {
+  const words: Word[] = items.map((i) => ({
+    text: i.text,
+    confidence: 90,
+    x: i.x,
+    y: i.y,
+    width: Math.max(20, i.text.length * 10),
+    height: 20,
+  }));
+  return {
+    page,
+    width: 1600,
+    height: 2200,
+    image: "",
+    text: "",
+    confidence: 90,
+    words,
+  };
+}
+
+test("số câu kết thúc bằng dấu phẩy vẫn được nhận diện", () => {
   const page = fakePage(2, [
+    {
+      x: 150,
+      lines: [
+        "44,",
+        "Why does the woman congratulate the man?",
+        "(A) He finished a road race.",
+        "(B) He won a publishing award.",
+        "(C) His experiment was successful.",
+        "(D) His research funding was extended.",
+      ],
+    },
+  ]);
+  const parsed = parseListening([page], config);
+  const q = parsed.tests[0].questions.find((x) => x.number === 44)!;
+  assert.ok(q, "câu 44 phải được nhận diện");
+  assert.equal(q.prompt, "Why does the woman congratulate the man?");
+  assert.equal(q.options.length, 4);
+  assert.equal(q.options[3], "His research funding was extended.");
+});
+
+test("nhãn lựa chọn dính trong dòng câu hỏi vẫn được tách ra", () => {
+  const page = fakeWordsPage(2, [
+    { text: "90.", x: 150, y: 100 },
+    { text: "What", x: 190, y: 140 },
+    { text: "does", x: 240, y: 140 },
+    { text: "the", x: 285, y: 140 },
+    { text: "speaker", x: 330, y: 140 },
+    { text: "imply", x: 400, y: 140 },
+    { text: "this", x: 450, y: 140 },
+    { text: "is", x: 490, y: 140 },
+    { text: "a", x: 520, y: 140 },
+    { text: "priority", x: 540, y: 140 },
+    { text: "A)", x: 640, y: 140 },
+    { text: "Overtime", x: 690, y: 140 },
+    { text: "pay", x: 760, y: 140 },
+    { text: "has", x: 800, y: 140 },
+    { text: "been", x: 840, y: 140 },
+    { text: "approved.", x: 890, y: 140 },
+    { text: "B)", x: 640, y: 180 },
+    { text: "A", x: 690, y: 180 },
+    { text: "deadline", x: 710, y: 180 },
+    { text: "must", x: 790, y: 180 },
+    { text: "be", x: 840, y: 180 },
+    { text: "met.", x: 870, y: 180 },
+  ]);
+  const parsed = parseListening([page], config);
+  const q = parsed.tests[0].questions.find((x) => x.number === 90)!;
+  assert.ok(q, "câu 90 phải được nhận diện");
+  assert.equal(q.options[0], "Overtime pay has been approved.");
+  assert.equal(q.options[1], "A deadline must be met.");
+});
+
+test("nhãn lựa chọn OCR hỏng vẫn gán đúng vị trí A B C D", () => {
+  const page = fakeWordsPage(2, [
+    { text: "34.", x: 150, y: 100 },
+    { text: "What", x: 190, y: 140 },
+    { text: "will", x: 240, y: 140 },
+    { text: "the", x: 285, y: 140 },
+    { text: "man", x: 330, y: 140 },
+    { text: "do", x: 380, y: 140 },
+    { text: "next?", x: 415, y: 140 },
+    { text: "(A)", x: 150, y: 180 },
+    { text: "Confirm", x: 200, y: 180 },
+    { text: "a", x: 270, y: 180 },
+    { text: "schedule", x: 290, y: 180 },
+    { text: "2)", x: 150, y: 220 },
+    { text: "Speak", x: 200, y: 220 },
+    { text: "to", x: 260, y: 220 },
+    { text: "a", x: 285, y: 220 },
+    { text: "coworker", x: 305, y: 220 },
+    { text: "(C)", x: 150, y: 260 },
+    { text: "Check", x: 200, y: 260 },
+    { text: "some", x: 260, y: 260 },
+    { text: "machinery", x: 305, y: 260 },
+    { text: "(D)", x: 150, y: 300 },
+    { text: "Clean", x: 200, y: 300 },
+    { text: "a", x: 260, y: 300 },
+    { text: "storage", x: 280, y: 300 },
+    { text: "room", x: 350, y: 300 },
+  ]);
+  const parsed = parseListening([page], config);
+  const q = parsed.tests[0].questions.find((x) => x.number === 34)!;
+  assert.ok(q, "câu 34 phải được nhận diện");
+  assert.equal(q.options[0], "Confirm a schedule");
+  assert.equal(q.options[1], "Speak to a coworker");
+  assert.equal(q.options[2], "Check some machinery");
+  assert.equal(q.options[3], "Clean a storage room");
+});
+
+test("chỉ lấy câu in sẵn, Part 1 và Part 2 nằm trong audio", () => {  const page = fakePage(2, [
     {
       x: 150,
       lines: [

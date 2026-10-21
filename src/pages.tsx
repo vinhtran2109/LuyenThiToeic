@@ -612,6 +612,7 @@ function Tests({ section = "all" }: { section?: string }) {
           .filter(
             (t) =>
               (section !== "listening" || t.section !== "reading") &&
+              (section !== "reading" || t.section === "reading") &&
               t.title.toLowerCase().includes(q.toLowerCase()) &&
               (year === "all" || t.year === Number(year)) &&
               (collection === "all" || t.collection === collection) &&

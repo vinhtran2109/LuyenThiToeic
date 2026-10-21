@@ -167,6 +167,10 @@ export async function runListeningImport(
             .catch(() => {});
         }
       },
+      undefined,
+      // Bản scan cần độ phân giải cao: ở 1600px tesseract hay đọc hỏng
+      // nhãn “(A)” thành “io”, “2)” và làm mất lựa chọn.
+      2400,
     );
     const parsed = parseListening(pages, config);
     // Part 1 và Part 2 không in trong booklet — lấy nội dung từ transcript audio.
