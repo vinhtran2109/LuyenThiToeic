@@ -75,6 +75,10 @@ for (const item of parsed.tests) {
       }
     } else if (!currentComplete) {
       stillBroken++;
+      await db.question.update({
+        where: { id: q.id },
+        data: { needsReview: true },
+      });
       console.log(
         `  còn thiếu: Test ${item.index} Q${q.number} (trang ${next?.page ?? "?"})`,
       );
